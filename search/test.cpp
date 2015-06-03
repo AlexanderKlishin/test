@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include <string>
+#include <vector>
 #include <iostream>
 #include <memory>
 
@@ -217,6 +218,97 @@ uint32_t get_crc(file_reader &f) {
 	return res;
 }
 
+// Knuth–Morris–Pratt
+class look_for_word_kmp {
+	class circle_buf {
+		unsigned round(unsigned i) {
+			i = i - 1;
+			i = i | (i >> 1);
+			i = i | (i >> 2);
+			i = i | (i >> 4);
+			i = i | (i >> 8);
+			i = i | (i >> 16);
+			return i + 1;
+		}
+	public:
+		circle_buf(size_t size)
+			: buf_(round(size), 0), head_(0), mask_(buf_.size() - 1) { }
+
+		void put(char c) {
+			buf_[head_++] = c;
+			head_ &= mask_;
+		}
+		char get(unsigned i) const {
+			size_t p = (head_ - i) & mask_;
+			return buf_[p];
+		}
+	private:
+		std::vector<char> buf_;
+		unsigned head_;
+		const unsigned mask_;
+	};
+
+public:
+	look_for_word_kmp(const std::string &w)
+		: count_(0), word_(w),
+		pf_(word_.size(), 0), k_(0), hist_(word_.size() + 1) {
+
+		for (size_t k = 0, i = 1; i < word_.size(); ++i) {
+			while(k > 0 && word_[i] != word_[k])
+				k = pf_[k-1];
+
+			if (word_[i] == word_[k])
+				k++;
+
+			pf_[i] = k;
+		}
+	}
+
+	void step(char c) {
+		if (k_ == word_.size()) {
+			if (is_space(hist_.get(word_.size() + 1)) && is_space(c))
+				count_++;
+
+			k_ = pf_[k_-1];
+		}
+
+		while (k_ > 0 && word_[k_] != c)
+			k_ = pf_[k_-1];
+
+		if (word_[k_] == c)
+			k_++;
+
+		hist_.put(c);
+		return;
+	}
+
+	unsigned long get_count() const { return count_; }
+
+private:
+	bool is_space(char c) {
+		const char wd[] = " \t\n\r()[]{}<>/\\|\"'`~!@#$%^&?*-+=.,;:";
+
+		// c == 0 is also checked
+		for (const auto d : wd)
+			if (c == d)
+				return true;
+
+		return false;
+	}
+
+private:
+	unsigned long count_;
+
+	const std::string &word_;
+
+	// KMP
+	std::vector<int> pf_;
+	size_t k_;
+
+	circle_buf hist_;
+};
+
+#if 0
 class look_for_word {
 public:
 	look_for_word(const std::string &w) :
@@ -253,10 +345,10 @@ private:
 	size_t pos_;
 	char c_prev_;
 };
+#endif
 
-// count_words("abc abc abc", "abc abc") = 1 - only the first
 uint32_t count_words(file_reader &f, const std::string &word) {
-	look_for_word l(word);
+	look_for_word_kmp l(word);
 
 	while (const auto buf = f.get_next_buf()) {
 		for (size_t i = 0; i < buf->size; i++)

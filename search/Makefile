@@ -1,6 +1,5 @@
 
-
-CXX=g++48
+CXX ?= g++
 CFLAGS+=--std=gnu++11 -Wall -Werror
 LDFLAGS=
 OBJS=$(patsubst %.cpp,%.o,$(wildcard *.cpp))
