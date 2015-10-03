@@ -1,26 +1,11 @@
-#include "ClicDb.h"
-
-#include "clic_printer.h"
-#include "clic_parser.h"
 #include <sstream>
 #include <iterator>
 
-std::set<std::string> split(const std::string& str, int delim = ' '){
-    std::set<std::string> res;
-    std::string::size_type i = 0;
-    std::string::size_type j = str.find(delim);
+#include "ClicDb.h"
+#include "types.h"
+#include "clic_printer.h"
+#include "clic_parser.h"
 
-    while (j != std::string::npos) {
-        res.insert(str.substr(i, j-i));
-        i = ++j;
-        j = str.find(delim, j);
-
-        if (j == std::string::npos)
-            res.insert(str.substr(i, str.length()));
-    }
-
-    return res;
-}
 ClicDb::ClicDb(const char* dbFilename) : db(NULL, 0)
 {
     try {
@@ -63,7 +48,10 @@ std::set<std::string> ClicDb::get(const std::string& usr) {
         return std::set<std::string>();
     std::string str((char*)value.get_data(), value.get_size());
 
-    return split(str, '\t');
+    std::set<std::string> res;
+    for (const auto &i : split(str, '\t'))
+        res.insert(i);
+    return res;
 }
 
 void ClicDb::addMultiple(const std::string& usr, const std::set<std::string>& locationsToAdd) {

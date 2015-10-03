@@ -1,8 +1,8 @@
 #!/bin/bash
 
-CMD_ADD="clang4vim add"
-CMD_RM="clang4vim rm"
-CMD_CLEAR="clang4vim clear"
+CMD_ADD="clang4vim-index add"
+CMD_RM="clang4vim-index rm"
+CMD_CLEAR="clang4vim-index clear"
 
 # Specify files to index here
 SOURCE_PATH=`cd $1; pwd` # convert $1 to an absolute path
@@ -24,7 +24,7 @@ add_to_index() {
 
 remove_from_index() {
     INDEX_FILE=`echo ${1}.i.gz | tr "/" "%"`
-    echo CMD_RM index.db $INDEX_FILE
+    echo $CMD_RM index.db $INDEX_FILE
     $CMD_RM index.db $INDEX_FILE || exit 1
     echo rm $INDEX_FILE
     rm $INDEX_FILE
@@ -32,7 +32,7 @@ remove_from_index() {
 
 if [ ! -f index.db -o ! -f files.txt ]; then
     echo "Creating database"
-    CMD_CLEAR index.db
+    $CMD_CLEAR index.db
     for i in `cat files2.txt`; do
         add_to_index $i
     done

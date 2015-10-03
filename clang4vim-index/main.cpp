@@ -95,7 +95,7 @@ int main_rm(int argc, const char* argv[]) {
         return 1;
     }
 
-    for (const auto &it : parseIndex(in)) {
+    for (const auto &it : istream_range(in)) {
         db.rmMultiple(it.first, it.second);
     }
     return 0;
@@ -189,7 +189,7 @@ int main(int argc, const char* argv[]) {
         return main_rm(argc, argv);
 
     if (std::string("clear") == cmd)
-        return main_add(argc, argv);
+        return main_clear(argc, argv);
 
     usage();
     return 1;

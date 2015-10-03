@@ -13,12 +13,15 @@ public:
     void clear();
 
     void set(const std::string& usr, const std::set<std::string>& locations);
-
     std::set<std::string> get(const std::string& usr);
-    void addMultiple(const std::string &usr, const std::set<std::string> &locationsToAdd);
-    void rmMultiple(const std::string &usr, const std::set<std::string> &locationsToRemove);
+
+    void addMultiple(const std::string &usr,
+                     const std::set<std::string> &locationsToAdd);
+    void rmMultiple(const std::string &usr,
+                    const std::set<std::string> &locationsToRemove);
 
 private:
+    /*
     class ClicCursor {
     public:
         explicit ClicCursor(Db& db) : cursor(nullptr) {
@@ -33,7 +36,7 @@ private:
         }
     private:
         Dbc* cursor;
-    };
+    };*/
 
     Db db;
 };
