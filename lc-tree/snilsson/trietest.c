@@ -191,7 +191,7 @@ void run(word testdata[], int entries, int repeat,
                   preadr = table->pre[preadr].pre;
                }	
                res = 0; /* not found */
-               end:
+               end: ;
                /********* End inline search ********/
             }
          clockoff();
