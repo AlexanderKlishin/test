@@ -60,34 +60,34 @@ int pnexthopcmp(nexthop_t *i, nexthop_t *j)
 
 /*
    Compute the branch and skip value for the root of the
-   tree that covers the base array from position 'first' to
-   'first + n - 1'. Disregard the first 'prefix' characters.
-   We assume that n >= 2 and base[first] != base[first+n-1].
+   tree that covers the base array from position 'begin' to 'end'.
+   Disregard the first 'prefix' characters.
+   We assume that end - begin >= 2 and base[begin] != base[end - 1].
 */
-void computebranch(base_t base[], int prefix, int first, int n,
-                   int *branch, int *newprefix)
+void computebranch(base_t base[], int prefix, int begin, int end,
+                   int *branch, int *skip_prefix)
 {
    word low, high;
    int i, pat, b;
    boolean patfound;
    int count;
 
-   /* Compute the new prefix */
-   high = REMOVE(prefix, base[first]->str);
-   low = REMOVE(prefix, base[first+n-1]->str);
+   /* Compute the new skip prefix */
+   high = REMOVE(prefix, base[begin]->str);
+   low = REMOVE(prefix, base[end - 1]->str);
    i = prefix;
    while (EXTRACT(i, 1, low) == EXTRACT(i, 1, high))
       i++;
-   *newprefix = i;
+   *skip_prefix = i;
 
    /* Always use branching factor 2 for two elements */
-   if (n == 2) {
+   if (end - begin == 2) {
       *branch = 1;
       return;
    }
 
    /* Use a large branching factor at the root */
-   if (ROOTBRANCH > 0 && prefix == 0  && first == 0) {
+   if (ROOTBRANCH > 0 && prefix == 0  && begin == 0) {
       *branch = ROOTBRANCH;
       return;
    }
@@ -98,55 +98,53 @@ void computebranch(base_t base[], int prefix, int first, int n,
    b = 1;
    do {
       b++;
-      if (n < FILLFACT*(1<<b) ||
-          *newprefix + b > ADRSIZE)
+      if (end - begin < FILLFACT*(1<<b) || *skip_prefix + b > ADRSIZE)
          break;
-      i = first;
-      pat = 0;
-      count = 0;
-      while (pat < 1<<b) {
+
+      i = begin
+
+      for (count = 0, pat = 0; pat < 1<<b; pat++) {
          patfound = FALSE;
-         while (i < first + n &&   
-                pat == EXTRACT(*newprefix, b, base[i]->str)) {
-            i++;
+         for (; i < end && pat == EXTRACT(*skip_prefix, b, base[i]->str); i++) {
             patfound = TRUE;
          }
+
          if (patfound)
             count++;
-         pat++;
       }
    } while (count >= FILLFACT*(1<<b));
    *branch = b - 1;
 }
 
 /*
-   Build a tree that covers the base array from position
-   'first' to 'first + n - 1'. Disregard the first 'prefix'
-   characters. 'pos' is the position for the root of this
-   tree and 'nextfree' is the first position in the array
-   that hasn't yet been reserved.
+   Build a tree that covers the base array from position 'begin' to 'end'.
+   Disregard the first 'prefix' characters.
+   'root'     -  position for the root of this tree
+   'nextfree' - is the first position in the array that hasn't yet been reserved.
 */
-void build(base_t base[], pre_t pre[], int prefix, int first, int n,
-           int pos, int *nextfree, node_t *tree)
+void build(base_t base[], pre_t pre[],
+           int prefix,
+           int begin, int end,
+           int *nextfree, node_t *tree, int root)
 {
    int branch, newprefix;
    int k, p, adr, bits;
    word bitpat;
 
-   if (n == 1)
-      tree[pos] = first; /* branch and skip are 0 */
+   if (end - begin == 1)
+      tree[root] = begin; /* branch and skip are 0 */
    else {
-      computebranch(base, prefix, first, n, &branch, &newprefix);
+      computebranch(base, prefix, begin, end, &branch, &newprefix);
       adr = *nextfree;
-      tree[pos] = SETBRANCH(branch) |
+      tree[root] = SETBRANCH(branch) |
                   SETSKIP(newprefix-prefix) |
                   SETADR(adr);
       *nextfree += 1<<branch;
-      p = first;
+      p = begin;
       /* Build the subtrees */
       for (bitpat = 0; bitpat < 1<<branch; bitpat++) {
-         k = 0;         
-         while (p+k < first+n &&
+         k = 0;
+         while (p + k < end &&
                 EXTRACT(newprefix, branch, base[p+k]->str) == bitpat)
             k++;
 
@@ -156,7 +154,7 @@ void build(base_t base[], pre_t pre[], int prefix, int first, int n,
             int match1 = 0, match2 = 0;
 
             /* Compute the longest prefix match for p - 1 */
-            if (p > first) {
+            if (p > begin) {
                int prep, len;
                prep =  base[p-1]->pre;
                while (prep != NOPRE && match1 == 0) {
@@ -168,10 +166,10 @@ void build(base_t base[], pre_t pre[], int prefix, int first, int n,
                   else
                      prep = pre[prep]->pre;
                }
-	    }         
+	    }
 
             /* Compute the longest prefix match for p */
-            if (p < first + n) {
+            if (p < end) {
                int prep, len;
                prep =  base[p]->pre;
                while (prep != NOPRE && match2 == 0) {
@@ -183,24 +181,24 @@ void build(base_t base[], pre_t pre[], int prefix, int first, int n,
                   else
                      prep = pre[prep]->pre;
                }
-	    }         
+	    }
 
-            if ((match1 > match2 && p > first) || p == first + n)
-               build(base, pre, newprefix+branch, p-1, 1,
-                     adr + bitpat, nextfree, tree);
+            if ((match1 > match2 && p > begin ) || p == end)
+               build(base, pre, newprefix+branch, p-1, p,
+                     nextfree, tree, adr + bitpat);
             else
-               build(base, pre, newprefix+branch, p, 1,
-                     adr + bitpat, nextfree, tree);
+               build(base, pre, newprefix+branch, p, p + 1,
+                     nextfree, tree, adr + bitpat);
          } else if (k == 1 && base[p]->len - newprefix < branch) {
             word i;
             bits = branch - base[p]->len + newprefix;
             for (i = bitpat; i < bitpat + (1<<bits); i++)
-               build(base, pre, newprefix+branch, p, 1,
-                     adr + i, nextfree, tree);
+               build(base, pre, newprefix+branch, p, p + 1,
+                     nextfree, tree, adr + i);
             bitpat += (1<<bits) - 1;
          } else
-            build(base, pre, newprefix+branch, p, k,
-                  adr + bitpat, nextfree, tree);
+            build(base, pre, newprefix+branch, p, p + k,
+                  nextfree, tree, adr + bitpat);
          p += k;
       }
    }
@@ -344,7 +342,7 @@ routtable_t buildrouttable(entry_t entry[], int nentries,
       }
 
    /* Build the trie structure */
-   build(b, p, 0, 0, nbases, 0, &nextfree, t);
+   build(b, p, 0, 0, nbases, &nextfree, t, 0);
 
    /* At this point we now how much memory to allocate */
    trie = (node_t *) malloc(nextfree * sizeof(node_t));
