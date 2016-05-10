@@ -67,54 +67,54 @@ int pnexthopcmp(nexthop_t *i, nexthop_t *j)
 void computebranch(base_t base[], int prefix, int begin, int end,
                    int *branch, int *skip_prefix)
 {
-   word low, high;
-   int i, pat, b;
-   boolean patfound;
-   int count;
+    word low, high;
+    int i, pat, b;
+    boolean patfound;
+    int count;
 
-   /* Compute the new skip prefix */
-   high = REMOVE(prefix, base[begin]->str);
-   low = REMOVE(prefix, base[end - 1]->str);
-   i = prefix;
-   while (EXTRACT(i, 1, low) == EXTRACT(i, 1, high))
-      i++;
-   *skip_prefix = i;
+    /* Compute the new skip prefix */
+    high = REMOVE(prefix, base[begin]->str);
+    low = REMOVE(prefix, base[end - 1]->str);
+    i = prefix;
+    while (EXTRACT(i, 1, low) == EXTRACT(i, 1, high))
+        i++;
+    *skip_prefix = i;
 
-   /* Always use branching factor 2 for two elements */
-   if (end - begin == 2) {
-      *branch = 1;
-      return;
-   }
+    /* Always use branching factor 2 for two elements */
+    if (end - begin == 2) {
+        *branch = 1;
+        return;
+    }
 
-   /* Use a large branching factor at the root */
-   if (ROOTBRANCH > 0 && prefix == 0  && begin == 0) {
-      *branch = ROOTBRANCH;
-      return;
-   }
+    /* Use a large branching factor at the root */
+    if (ROOTBRANCH > 0 && prefix == 0  && begin == 0) {
+        *branch = ROOTBRANCH;
+        return;
+    }
 
-   /* Compute the number of bits that can be used for branching.
+    /* Compute the number of bits that can be used for branching.
       We have at least two branches. Therefore we start the search
       at 2^b = 4 branches. */
-   b = 1;
-   do {
-      b++;
-      if (end - begin < FILLFACT*(1<<b) || *skip_prefix + b > ADRSIZE)
+    b = 1;
+    do {
+        b++;
+        if (end - begin < FILLFACT*(1<<b) || *skip_prefix + b > ADRSIZE)
          break;
 
-      i = begin
+        i = begin;
 
-      for (count = 0, pat = 0; pat < 1<<b; pat++) {
-         patfound = FALSE;
-         for (; i < end && pat == EXTRACT(*skip_prefix, b, base[i]->str); i++) {
-            patfound = TRUE;
-         }
+        for (count = 0, pat = 0; pat < 1<<b; pat++) {
+            for (patfound = FALSE;
+                 i < end && pat == EXTRACT(*skip_prefix, b, base[i]->str);
+                 patfound = TRUE, i++) { }
 
-         if (patfound)
-            count++;
-      }
-   } while (count >= FILLFACT*(1<<b));
-   *branch = b - 1;
+             if (patfound)
+                count++;
+        }
+    } while (count >= FILLFACT*(1<<b));
+    *branch = b - 1;
 }
+
 
 /*
    Build a tree that covers the base array from position 'begin' to 'end'.
@@ -127,81 +127,84 @@ void build(base_t base[], pre_t pre[],
            int begin, int end,
            int *nextfree, node_t *tree, int root)
 {
-   int branch, newprefix;
+   int branch, skip_prefix;
    int k, p, adr, bits;
    word bitpat;
 
-   if (end - begin == 1)
-      tree[root] = begin; /* branch and skip are 0 */
-   else {
-      computebranch(base, prefix, begin, end, &branch, &newprefix);
-      adr = *nextfree;
-      tree[root] = SETBRANCH(branch) |
-                  SETSKIP(newprefix-prefix) |
-                  SETADR(adr);
-      *nextfree += 1<<branch;
-      p = begin;
-      /* Build the subtrees */
-      for (bitpat = 0; bitpat < 1<<branch; bitpat++) {
-         k = 0;
-         while (p + k < end &&
-                EXTRACT(newprefix, branch, base[p+k]->str) == bitpat)
-            k++;
+    if (end - begin == 1) {
+        tree[root] = SETBRANCH(0) |
+                     SETSKIP(0) |
+                     SETADR(begin);
+        return;
+    }
 
-         if (k == 0) {
-	   /* The leaf should have a pointer either to p-1 or p,
+    computebranch(base, prefix, begin, end, &branch, &skip_prefix);
+
+    adr = *nextfree;
+    tree[root] = SETBRANCH(branch) |
+              SETSKIP(skip_prefix - prefix) |
+              SETADR(adr);
+    *nextfree += 1<<branch;
+    p = begin;
+    /* Build the subtrees */
+    for (bitpat = 0; bitpat < 1<<branch; bitpat++) {
+        for (k = 0;
+             p + k < end && EXTRACT(skip_prefix, branch, base[p+k]->str) == bitpat;
+             k++) { }
+
+        if (k == 0) {
+            /* The leaf should have a pointer either to p-1 or p,
               whichever has the longest matching prefix */
             int match1 = 0, match2 = 0;
 
             /* Compute the longest prefix match for p - 1 */
             if (p > begin) {
-               int prep, len;
-               prep =  base[p-1]->pre;
-               while (prep != NOPRE && match1 == 0) {
-                  len = pre[prep]->len;
-                  if (len > newprefix &&
-                      EXTRACT(newprefix, len - newprefix, base[p-1]->str) ==
-                      EXTRACT(32 - branch, len - newprefix, bitpat))
-                     match1 = len;
-                  else
-                     prep = pre[prep]->pre;
-               }
-	    }
+                int prep, len;
+                prep =  base[p-1]->pre;
+                while (prep != NOPRE && match1 == 0) {
+                    len = pre[prep]->len;
+                    if (len > skip_prefix &&
+                        EXTRACT(skip_prefix, len - skip_prefix, base[p-1]->str) ==
+                        EXTRACT(32 - branch, len - skip_prefix, bitpat))
+                        match1 = len;
+                    else
+                        prep = pre[prep]->pre;
+                }
+            }
 
             /* Compute the longest prefix match for p */
             if (p < end) {
-               int prep, len;
-               prep =  base[p]->pre;
-               while (prep != NOPRE && match2 == 0) {
-                  len = pre[prep]->len;
-                  if (len > newprefix &&
-                      EXTRACT(newprefix, len - newprefix, base[p]->str) ==
-                      EXTRACT(32 - branch, len - newprefix, bitpat))
-                     match2 = len;
-                  else
-                     prep = pre[prep]->pre;
-               }
-	    }
+                int prep, len;
+                prep =  base[p]->pre;
+                while (prep != NOPRE && match2 == 0) {
+                    len = pre[prep]->len;
+                    if (len > skip_prefix &&
+                        EXTRACT(skip_prefix, len - skip_prefix, base[p]->str) ==
+                        EXTRACT(32 - branch, len - skip_prefix, bitpat))
+                        match2 = len;
+                    else
+                        prep = pre[prep]->pre;
+                }
+            }
 
             if ((match1 > match2 && p > begin ) || p == end)
-               build(base, pre, newprefix+branch, p-1, p,
-                     nextfree, tree, adr + bitpat);
+                build(base, pre, skip_prefix+branch, p-1, p,
+                      nextfree, tree, adr + bitpat);
             else
-               build(base, pre, newprefix+branch, p, p + 1,
-                     nextfree, tree, adr + bitpat);
-         } else if (k == 1 && base[p]->len - newprefix < branch) {
-            word i;
-            bits = branch - base[p]->len + newprefix;
-            for (i = bitpat; i < bitpat + (1<<bits); i++)
-               build(base, pre, newprefix+branch, p, p + 1,
-                     nextfree, tree, adr + i);
-            bitpat += (1<<bits) - 1;
-         } else
-            build(base, pre, newprefix+branch, p, p + k,
-                  nextfree, tree, adr + bitpat);
-         p += k;
-      }
-   }
+                build(base, pre, skip_prefix+branch, p, p + 1,
+                      nextfree, tree, adr + bitpat);
+     } else if (k == 1 && base[p]->len - skip_prefix < branch) {
+        word i;
+        bits = branch - base[p]->len + skip_prefix;
+        for (i = bitpat; i < bitpat + (1<<bits); i++)
+            build(base, pre, skip_prefix+branch, p, p + 1,
+                  nextfree, tree, adr + i);
+        bitpat += (1<<bits) - 1;
+     } else
+        build(base, pre, skip_prefix+branch, p, p + k,
+              nextfree, tree, adr + bitpat);
+        p += k;
+    }
 }
 
 /* Is the string s a prefix of the string t? */
@@ -216,50 +219,50 @@ int isprefix(entry_t s, entry_t t)
 
 int binsearch(nexthop_t x, int v[], int n)
 {
-   int low, high, mid;
+    int low, high, mid;
 
-   low = 0;
-   high = n - 1;
-   while (low <= high) {
-      mid = (low+high) / 2;
-      if (x < v[mid])
-         high = mid - 1;
-      else if (x > v[mid])
-         low = mid + 1;
-      else
-         return mid;
-   }
-   return -1;
+    low = 0;
+    high = n - 1;
+    while (low <= high) {
+        mid = (low+high) / 2;
+        if (x < v[mid])
+            high = mid - 1;
+        else if (x > v[mid])
+            low = mid + 1;
+        else
+            return mid;
+    }
+    return -1;
 }
 
 nexthop_t *buildnexthoptable(entry_t entry[], int nentries, int *nexthopsize)
 {
-   nexthop_t *nexthop, *nexttemp;
-   int count, i;
+    nexthop_t *nexthop, *nexttemp;
+    int count, i;
 
-   /* Extract the nexthop addresses from the entry array */
-   nexttemp = (nexthop_t *) malloc(nentries * sizeof(nexthop_t));
-   for (i = 0; i < nentries; i++)
-      nexttemp[i] = entry[i]->nexthop;
+    /* Extract the nexthop addresses from the entry array */
+    nexttemp = (nexthop_t *) malloc(nentries * sizeof(nexthop_t));
+    for (i = 0; i < nentries; i++)
+        nexttemp[i] = entry[i]->nexthop;
 
-   quicksort((char *) nexttemp, nentries,
+    quicksort((char *) nexttemp, nentries,
              sizeof(nexthop_t), pnexthopcmp);
 
-   /* Remove duplicates */
-   count = nentries > 0 ? 1 : 0;
-   for (i = 1; i < nentries; i++)
-      if (pnexthopcmp(&nexttemp[i-1], &nexttemp[i]) != 0)
-         nexttemp[count++] = nexttemp[i];
+    /* Remove duplicates */
+    count = nentries > 0 ? 1 : 0;
+    for (i = 1; i < nentries; i++)
+        if (pnexthopcmp(&nexttemp[i-1], &nexttemp[i]) != 0)
+        nexttemp[count++] = nexttemp[i];
 
-   /* Move the elements to an array of proper size */
-   nexthop = (nexthop_t *) malloc(count * sizeof(nexthop_t));
-   for (i = 0; i < count; i++) {
-      nexthop[i] = nexttemp[i];
-   }
-   free(nexttemp);
+    /* Move the elements to an array of proper size */
+    nexthop = (nexthop_t *) malloc(count * sizeof(nexthop_t));
+    for (i = 0; i < count; i++) {
+        nexthop[i] = nexttemp[i];
+    }
+    free(nexttemp);
 
-   *nexthopsize = count;
-   return nexthop;
+    *nexthopsize = count;
+    return nexthop;
 }
 
 routtable_t buildrouttable(entry_t entry[], int nentries,
@@ -387,12 +390,12 @@ routtable_t buildrouttable(entry_t entry[], int nentries,
    return table;
 }
 
-void disposerouttable(routtable_t t) 
+void disposerouttable(routtable_t t)
 {
-   free(t->trie);
-   free(t->base);
-   free(t->nexthop);
-   free(t);
+    free(t->trie);
+    free(t->base);
+    free(t->nexthop);
+    free(t);
 }
 
 /* Return a nexthop or 0 if not found */
