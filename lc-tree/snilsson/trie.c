@@ -99,7 +99,7 @@ void computebranch(base_t base[], int prefix, int begin, int end,
     do {
         b++;
         if (end - begin < FILLFACT*(1<<b) || *skip_prefix + b > ADRSIZE)
-         break;
+            break;
 
         i = begin;
 
@@ -115,7 +115,6 @@ void computebranch(base_t base[], int prefix, int begin, int end,
     *branch = b - 1;
 }
 
-
 /*
    Build a tree that covers the base array from position 'begin' to 'end'.
    Disregard the first 'prefix' characters.
@@ -127,10 +126,6 @@ void build(base_t base[], pre_t pre[],
            int begin, int end,
            int *nextfree, node_t *tree, int root)
 {
-   int branch, skip_prefix;
-   int k, p, adr, bits;
-   word bitpat;
-
     if (end - begin == 1) {
         tree[root] = SETBRANCH(0) |
                      SETSKIP(0) |
@@ -138,71 +133,68 @@ void build(base_t base[], pre_t pre[],
         return;
     }
 
+    int branch, skip_prefix;
+
     computebranch(base, prefix, begin, end, &branch, &skip_prefix);
 
-    adr = *nextfree;
+    int adr = *nextfree;
     tree[root] = SETBRANCH(branch) |
-              SETSKIP(skip_prefix - prefix) |
-              SETADR(adr);
+                 SETSKIP(skip_prefix - prefix) |
+                 SETADR(adr);
     *nextfree += 1<<branch;
-    p = begin;
+
+    word bitpat;
+    int p = begin;
     /* Build the subtrees */
     for (bitpat = 0; bitpat < 1<<branch; bitpat++) {
-        for (k = 0;
-             p + k < end && EXTRACT(skip_prefix, branch, base[p+k]->str) == bitpat;
-             k++) { }
+        int k;
+
+        for (k = p; k < end && EXTRACT(skip_prefix, branch, base[k]->str) == bitpat; k++) { }
+        k -= p; /* entries count */
 
         if (k == 0) {
-            /* The leaf should have a pointer either to p-1 or p,
-              whichever has the longest matching prefix */
+            /* leaf should points either to p-1 or p,
+               whichever has the longest matching prefix */
             int match1 = 0, match2 = 0;
 
-            /* Compute the longest prefix match for p - 1 */
+            /* longest prefix match for p - 1 */
             if (p > begin) {
-                int prep, len;
-                prep =  base[p-1]->pre;
-                while (prep != NOPRE && match1 == 0) {
-                    len = pre[prep]->len;
+                int prep = base[p - 1]->pre;
+                for (; prep != NOPRE && match1 == 0; prep = pre[prep]->pre) {
+                    int len = pre[prep]->len;
                     if (len > skip_prefix &&
-                        EXTRACT(skip_prefix, len - skip_prefix, base[p-1]->str) ==
+                        EXTRACT(skip_prefix, len - skip_prefix, base[p - 1]->str) ==
                         EXTRACT(32 - branch, len - skip_prefix, bitpat))
                         match1 = len;
-                    else
-                        prep = pre[prep]->pre;
                 }
             }
 
-            /* Compute the longest prefix match for p */
+            /* longest prefix match for p */
             if (p < end) {
-                int prep, len;
-                prep =  base[p]->pre;
-                while (prep != NOPRE && match2 == 0) {
-                    len = pre[prep]->len;
+                int prep = base[p]->pre;
+                for (; prep != NOPRE && match2 == 0; prep = pre[prep]->pre) {
+                    int len = pre[prep]->len;
                     if (len > skip_prefix &&
                         EXTRACT(skip_prefix, len - skip_prefix, base[p]->str) ==
                         EXTRACT(32 - branch, len - skip_prefix, bitpat))
                         match2 = len;
-                    else
-                        prep = pre[prep]->pre;
                 }
             }
 
-            if ((match1 > match2 && p > begin ) || p == end)
-                build(base, pre, skip_prefix+branch, p-1, p,
-                      nextfree, tree, adr + bitpat);
+            if (match1 > match2 || p == end)
+                build(base, pre, skip_prefix + branch, p - 1, p, nextfree, tree, adr + bitpat);
             else
-                build(base, pre, skip_prefix+branch, p, p + 1,
-                      nextfree, tree, adr + bitpat);
-     } else if (k == 1 && base[p]->len - skip_prefix < branch) {
-        word i;
-        bits = branch - base[p]->len + skip_prefix;
-        for (i = bitpat; i < bitpat + (1<<bits); i++)
-            build(base, pre, skip_prefix+branch, p, p + 1,
-                  nextfree, tree, adr + i);
-        bitpat += (1<<bits) - 1;
-     } else
-        build(base, pre, skip_prefix+branch, p, p + k,
-              nextfree, tree, adr + bitpat);
+                build(base, pre, skip_prefix + branch, p, p + 1, nextfree, tree, adr + bitpat);
+        } else if (k == 1 && base[p]->len - skip_prefix < branch) {
+            word i;
+            int bits = branch - base[p]->len + skip_prefix;
+            for (i = bitpat; i < bitpat + (1<<bits); i++)
+                build(base, pre, skip_prefix+branch, p, p + 1, nextfree, tree, adr + i);
+            bitpat += (1<<bits) - 1;
+        } else {
+            build(base, pre, skip_prefix+branch, p, p + k, nextfree, tree, adr + bitpat);
+        }
+
         p += k;
     }
 }
@@ -323,8 +315,7 @@ routtable_t buildrouttable(entry_t entry[], int nentries,
    for (i = 0; i < size; i++)
       entry[i]->pre = NOPRE;
 
-   /* Go through the entries and put the prefixes in p
-      and the rest of the strings in b */
+   /* put prefixes in p and the rest of the strings in b */
    for (i = 0; i < size; i++)
       if (i < size-1 && isprefix(entry[i], entry[i+1])) {
          ptemp = (pre_t) malloc(sizeof(struct prerec));
@@ -344,7 +335,6 @@ routtable_t buildrouttable(entry_t entry[], int nentries,
          b[nbases++] = btemp;
       }
 
-   /* Build the trie structure */
    build(b, p, 0, 0, nbases, &nextfree, t, 0);
 
    /* At this point we now how much memory to allocate */
