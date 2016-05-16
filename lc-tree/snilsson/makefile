@@ -20,6 +20,7 @@ CC= gcc
 
 # The flags (options) that the C-compiler needs:
 CFLAGS = -O4            # optimization
+CFLAGS += -std=c99
 #CFLAGS = -g -Wall      # debugging, warnings
 #CFLAGS = -a           # tcov, profiling, works only with cc
 #CFLAGS = -xpg          # gprof, works only with cc

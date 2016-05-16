@@ -65,20 +65,15 @@ int pnexthopcmp(nexthop_t *i, nexthop_t *j)
    We assume that end - begin >= 2 and base[begin] != base[end - 1].
 */
 void computebranch(base_t base[], int prefix, int begin, int end,
-                   int *branch, int *skip_prefix)
+                   int *branch, int *skip)
 {
-    word low, high;
-    int i, pat, b;
-    boolean patfound;
-    int count;
-
     /* Compute the new skip prefix */
+    word low, high;
     high = REMOVE(prefix, base[begin]->str);
     low = REMOVE(prefix, base[end - 1]->str);
-    i = prefix;
-    while (EXTRACT(i, 1, low) == EXTRACT(i, 1, high))
-        i++;
-    *skip_prefix = i;
+    *skip = prefix;
+    while (EXTRACT(*skip, 1, low) == EXTRACT(*skip, 1, high))
+        *skip++;
 
     /* Always use branching factor 2 for two elements */
     if (end - begin == 2) {
@@ -95,20 +90,21 @@ void computebranch(base_t base[], int prefix, int begin, int end,
     /* Compute the number of bits that can be used for branching.
       We have at least two branches. Therefore we start the search
       at 2^b = 4 branches. */
-    b = 1;
+    int b = 1;
+    int count;
     do {
         b++;
-        if (end - begin < FILLFACT*(1<<b) || *skip_prefix + b > ADRSIZE)
+        if (end - begin < FILLFACT*(1<<b) || *skip + b > ADRSIZE)
             break;
 
-        i = begin;
+        count = 0;
+        for (int i = begin, pat = 0; pat < 1<<b; pat++) {
+            int found = 0;
 
-        for (count = 0, pat = 0; pat < 1<<b; pat++) {
-            for (patfound = FALSE;
-                 i < end && pat == EXTRACT(*skip_prefix, b, base[i]->str);
-                 patfound = TRUE, i++) { }
+            for (; i < end && pat == EXTRACT(*skip, b, base[i]->str);
+                 found = 1, i++) { }
 
-             if (patfound)
+             if (found)
                 count++;
         }
     } while (count >= FILLFACT*(1<<b));
@@ -133,24 +129,23 @@ void build(base_t base[], pre_t pre[],
         return;
     }
 
-    int branch, skip_prefix;
+    int branch, skip;
 
-    computebranch(base, prefix, begin, end, &branch, &skip_prefix);
+    computebranch(base, prefix, begin, end, &branch, &skip);
 
     int adr = *nextfree;
     tree[root] = SETBRANCH(branch) |
-                 SETSKIP(skip_prefix - prefix) |
+                 SETSKIP(skip - prefix) |
                  SETADR(adr);
     *nextfree += 1<<branch;
 
-    word bitpat;
     int p = begin;
     /* Build the subtrees */
-    for (bitpat = 0; bitpat < 1<<branch; bitpat++) {
-        int k;
+    for (word bitpat = 0; bitpat < 1<<branch; bitpat++) {
+        int k = 0;
 
-        for (k = p; k < end && EXTRACT(skip_prefix, branch, base[k]->str) == bitpat; k++) { }
-        k -= p; /* entries count */
+        /* entries count */
+        for (; p + k < end && EXTRACT(skip, branch, base[p + k]->str) == bitpat; k++) { }
 
         if (k == 0) {
             /* leaf should points either to p-1 or p,
@@ -159,40 +154,43 @@ void build(base_t base[], pre_t pre[],
 
             /* longest prefix match for p - 1 */
             if (p > begin) {
-                int prep = base[p - 1]->pre;
-                for (; prep != NOPRE && match1 == 0; prep = pre[prep]->pre) {
+                for (int prep = base[p - 1]->pre;
+                     prep != NOPRE && match1 == 0; prep = pre[prep]->pre) {
                     int len = pre[prep]->len;
-                    if (len > skip_prefix &&
-                        EXTRACT(skip_prefix, len - skip_prefix, base[p - 1]->str) ==
-                        EXTRACT(32 - branch, len - skip_prefix, bitpat))
+
+                    if (len > skip &&
+                        EXTRACT(skip, len - skip, base[p - 1]->str) ==
+                        EXTRACT(32 - branch, len - skip, bitpat))
                         match1 = len;
                 }
             }
 
             /* longest prefix match for p */
             if (p < end) {
-                int prep = base[p]->pre;
-                for (; prep != NOPRE && match2 == 0; prep = pre[prep]->pre) {
+                for (int prep = base[p]->pre;
+                     prep != NOPRE && match2 == 0; prep = pre[prep]->pre) {
                     int len = pre[prep]->len;
-                    if (len > skip_prefix &&
-                        EXTRACT(skip_prefix, len - skip_prefix, base[p]->str) ==
-                        EXTRACT(32 - branch, len - skip_prefix, bitpat))
+
+                    if (len > skip &&
+                        EXTRACT(skip, len - skip, base[p]->str) ==
+                        EXTRACT(32 - branch, len - skip, bitpat))
                         match2 = len;
                 }
             }
 
             if (match1 > match2 || p == end)
-                build(base, pre, skip_prefix + branch, p - 1, p, nextfree, tree, adr + bitpat);
+                build(base, pre, skip + branch, p - 1, p, nextfree, tree, adr + bitpat);
             else
-                build(base, pre, skip_prefix + branch, p, p + 1, nextfree, tree, adr + bitpat);
-        } else if (k == 1 && base[p]->len - skip_prefix < branch) {
-            word i;
-            int bits = branch - base[p]->len + skip_prefix;
-            for (i = bitpat; i < bitpat + (1<<bits); i++)
-                build(base, pre, skip_prefix+branch, p, p + 1, nextfree, tree, adr + i);
+                build(base, pre, skip + branch, p, p + 1, nextfree, tree, adr + bitpat);
+        } else if (k == 1 && base[p]->len - skip < branch) {
+            int bits = branch - base[p]->len + skip;
+
+            for (word i = bitpat; i < bitpat + (1<<bits); i++)
+                build(base, pre, skip + branch, p, p + 1, nextfree, tree, adr + i);
+
             bitpat += (1<<bits) - 1;
         } else {
-            build(base, pre, skip_prefix+branch, p, p + k, nextfree, tree, adr + bitpat);
+            build(base, pre, skip + branch, p, p + k, nextfree, tree, adr + bitpat);
         }
 
         p += k;
