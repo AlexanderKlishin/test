@@ -3,6 +3,7 @@
 #include <strings.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <math.h>
 
 typedef struct State {
     char* str;
@@ -213,6 +214,28 @@ int s21_sprintf(char *str, const char *fmt, ...) {
     return res;
 }
 
+
+long pow_ten(int p) {
+    long res = 10;
+    for(int i = 1 ; i < p; ++i) {
+        res *= 10;
+    }
+    return res;
+}
+
+double rrr(double d, int p) {
+    double high = (long)d;
+    double m = d - high;
+    long pr = pow_ten(p);
+    m *= pr;
+    m += 0.5;
+    if(m >= pr)
+       high += 1;
+    m = (long)m % pr;
+    printf("Double: %f %f", high, m);
+    return high;
+}
+
 int main(int argc, char **argv)
 {
     char test[1000];
@@ -232,5 +255,6 @@ int main(int argc, char **argv)
     s21_sprintf(test, "%s %x", test_str, (int)0xabcdef);
     printf("result:%s\n", test);
 
+    rrr(9999.99999, 3);
 	return 0;
 }
